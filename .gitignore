@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Personal note photos and rendered output are one-off, not versioned.
+assets/notes/*
+!assets/notes/.gitkeep
+output/*
+!output/.gitkeep
