@@ -66,20 +66,35 @@ NOTE_QUAD_FRAC = (
 
 # --- Canvas & look ------------------------------------------------------------
 
-CANVAS_SIZE = (400, 560)  # output GIF pixel size (width, height) -- kept modest, GIF/LZW compresses photo texture poorly
-BG_COLOR = (61, 16, 16)   # sampled from the leather backdrop, used for letterboxing
-GIF_COLORS = 96           # palette size passed to Pillow's GIF quantizer
+CANVAS_SIZE = (640, 900)  # output GIF pixel size (width, height)
+BG_COLOR = (61, 16, 16)   # flat fallback tone, only used if the leather sample can't load
+GIF_COLORS = 160          # palette size for the single shared GIF palette (see pipeline.py)
+
+# Real leather backdrop for the canvas, instead of a flat fill -- the objects
+# then sit on the same textured surface they were photographed on, so their
+# edges don't read as a hard texture-to-flat seam. This names a clean,
+# object-free leather band in one source photo (fractions of that photo);
+# background.py tiles + vignettes it to canvas size. Re-pick if a retake
+# moves the objects.
+LEATHER_SAMPLE_SOURCE = "envelope_front"
+LEATHER_SAMPLE_FRAC = (0.0, 0.0, 1.0, 0.318)  # full-width band above the envelope
+LEATHER_VIGNETTE = 0.28  # 0 = none, 1 = strong corner darkening
 
 # Width objects are scaled to on canvas, and duration to fit within before
 # padding to keep frames visually consistent across stages that mix
 # landscape (envelope, closed card) and portrait (open card) subjects.
-ENVELOPE_TARGET_WIDTH = 350
-CARD_TARGET_WIDTH = 350
+ENVELOPE_TARGET_WIDTH = 560
+CARD_TARGET_WIDTH = 560
+
+# How far the rectangular object crops are feathered into the leather
+# background when pasted (px), so the thin real-leather ring around each
+# crop dissolves into the canvas leather instead of ending at a hard edge.
+PASTE_FEATHER_PX = 4
 
 # Vertical staging, as fractions of CANVAS_SIZE height. The envelope scenes
 # sit higher on the canvas; the card docks with its top edge (its hinge,
 # since the card is top-folded) at CARD_HINGE_Y_FRAC and opens from there.
-ENVELOPE_CENTER_Y_FRAC = 0.30
+ENVELOPE_CENTER_Y_FRAC = 0.34
 CARD_HINGE_Y_FRAC = 0.50
 
 # --- Timing -------------------------------------------------------------------

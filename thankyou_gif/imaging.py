@@ -7,9 +7,9 @@ on different axes with different pivot points).
 import math
 import os
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
-from . import config
+from . import background, config
 
 
 def load_source(name):
@@ -46,19 +46,37 @@ def fit_width(img, target_width):
 
 
 def blank_canvas():
-    return Image.new("RGB", config.CANVAS_SIZE, config.BG_COLOR)
+    return background.leather_canvas().copy()
 
 
-def paste_with_pivot(canvas, img, anchor_point, pivot_frac=(0.5, 0.5)):
+def _feathered_mask(size, feather_px):
+    """Solid-white mask the size of an object crop, with its border feathered
+    inward so the paste dissolves into the background over `feather_px`."""
+    w, h = size
+    mask = Image.new("L", (w, h), 0)
+    inset = feather_px
+    ImageDraw.Draw(mask).rectangle(
+        (inset, inset, w - 1 - inset, h - 1 - inset), fill=255
+    )
+    return mask.filter(ImageFilter.GaussianBlur(feather_px / 2))
+
+
+def paste_with_pivot(canvas, img, anchor_point, pivot_frac=(0.5, 0.5), feather_px=None):
     """Paste img onto a copy of canvas such that the point at
     (pivot_frac[0]*img.width, pivot_frac[1]*img.height) lands on
-    anchor_point (x, y) in canvas coordinates."""
+    anchor_point (x, y) in canvas coordinates. When feather_px is set, the
+    object's rectangular edge is softened into the background over that many
+    px (defaults to config.PASTE_FEATHER_PX; pass 0 to disable)."""
     frame = canvas.copy()
     px_frac, py_frac = pivot_frac
     ax, ay = anchor_point
     x = round(ax - px_frac * img.width)
     y = round(ay - py_frac * img.height)
-    frame.paste(img, (x, y))
+    fp = config.PASTE_FEATHER_PX if feather_px is None else feather_px
+    if fp and img.width > 2 * fp and img.height > 2 * fp:
+        frame.paste(img, (x, y), _feathered_mask(img.size, fp))
+    else:
+        frame.paste(img, (x, y))
     return frame
 
 

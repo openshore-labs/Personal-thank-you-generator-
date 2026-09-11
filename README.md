@@ -87,10 +87,52 @@ in `imaging.flip_transition`:
 - Refine `FLAP_TRIANGLE_FRAC` against a higher-precision edge trace, then
   reduce the inflate/blur in `envelope_with_flap_removed`.
 
-## GIF size
+## Playback, delivery, and size
 
-`CANVAS_SIZE` and `GIF_COLORS` in config.py trade quality for file size --
-GIF's palette + LZW compression is unkind to photographic texture (paper
-grain, soft lighting). Current defaults land around 3-4 MB for the full
-9-stage sequence; push `CANVAS_SIZE` up if you want more detail and don't
-mind a bigger file.
+- **Plays once, then freezes on the final open-card still** -- no looping.
+  This is done by omitting the loop directive entirely when writing the GIF
+  (`config.LOOP = None`), which per the GIF spec plays through once and holds
+  the last frame.
+- **Built to be a plain email attachment** on desktop and mobile. Attach the
+  `.gif` file itself (don't paste it inline into the message body): a plain
+  attachment opens in the recipient's own image viewer, which animates
+  everywhere (Apple Mail, Gmail, Outlook, iCloud, Yahoo, on both desktop and
+  phone). The one caveat worth knowing -- Outlook for Windows freezes GIFs
+  that are *embedded inline* in an HTML message body to their first frame --
+  only applies to inline embedding, not to an attached file.
+- **Size:** current defaults produce roughly an 8 MB file for the full
+  9-stage sequence at 640x900 (about 11 MB "on the wire" after email base64
+  encoding) -- comfortably under every consumer mail cap (Gmail 25 MB,
+  iCloud/Outlook ~20 MB). If you ever need it smaller, drop `CANVAS_SIZE` or
+  `GIF_COLORS` in config.py; if you want more detail and don't mind a bigger
+  file, raise `CANVAS_SIZE`.
+
+## Look / realism
+
+- **Objects sit on real leather, not a flat color.** `background.py` samples
+  a clean, object-free leather band out of a source photo
+  (`LEATHER_SAMPLE_*` in config.py), tiles and vignettes it to canvas size,
+  and every frame is composited over that. Object crops are feathered into it
+  (`PASTE_FEATHER_PX`) so their edges dissolve into the leather instead of
+  ending at a hard rectangle.
+- **One shared GIF palette** for the whole animation (`pipeline._shared_palette`),
+  derived from frames sampled across the sequence, rather than a separate
+  palette per frame -- the latter makes the photographed grain shimmer
+  frame-to-frame. Dithering is off for the same reason (and it roughly
+  halves the file size).
+
+## Still to do when real handwritten-note photos arrive
+
+The note compositing (`compositing.composite_note`) currently does a straight
+perspective warp with a light edge feather -- good geometry, but it will look
+pasted-on unless the note photo happens to match the card's lighting. Once
+real notes are in hand, the high-value additions (all local to
+`composite_note`, no change to the warp math) are, in order:
+
+1. Auto exposure / white-balance match: sample the card's own blank-panel
+   tone and gain-shift the note to match, so you don't have to nail lighting
+   by hand for every note.
+2. A soft contact shadow under the warped note, so it reads as sitting on the
+   paper rather than floating.
+3. A faint paper-grain multiply over the note so a crisper note photo doesn't
+   look too clean against the card's texture.
