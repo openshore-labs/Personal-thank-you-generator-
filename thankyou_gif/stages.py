@@ -29,44 +29,57 @@ def build_frames(note_path=None, address_path=None):
     if address_path:
         envelope_front_src = compositing.write_address(envelope_front_src, address_path)
 
-    envelope_open_src = compositing.envelope_with_flap_removed(envelope_back_src, envelope_front_src)
-
     ef = _fitted(envelope_front_src, "envelope_front", config.ENVELOPE_TARGET_WIDTH)
     eb = _fitted(envelope_back_src, "envelope_back", config.ENVELOPE_TARGET_WIDTH)
-    eo = _fitted(envelope_open_src, "envelope_back", config.ENVELOPE_TARGET_WIDTH)
+    eo = _fitted(imaging.load_source("envelope_open"), "envelope_open", config.ENVELOPE_TARGET_WIDTH)
     cc = _fitted(card_cover_src, "card_cover", config.CARD_TARGET_WIDTH)
     co = _fitted(card_open_src, "card_open", config.CARD_TARGET_WIDTH)
 
     canvas_w, canvas_h = config.CANVAS_SIZE
-    envelope_anchor = (canvas_w / 2, canvas_h * config.ENVELOPE_CENTER_Y_FRAC)
+    cx = canvas_w / 2
+    env_bottom = canvas_h * config.ENVELOPE_BOTTOM_Y_FRAC
+    env_anchor = (cx, env_bottom)
+    env_pivot = (0.5, 1.0)  # bottom-aligned
     hinge_y = canvas_h * config.CARD_HINGE_Y_FRAC
-    card_cover_anchor = (canvas_w / 2, hinge_y + cc.height / 2)  # cover rests below the hinge
+    card_cover_anchor = (cx, hinge_y + cc.height / 2)  # cover rests below the hinge
 
     frames = []
 
     n, ms = config.TIMING["hold_envelope_front"]
-    frames += [(f, ms) for f in imaging.hold(ef, n, envelope_anchor)]
+    frames += [(f, ms) for f in imaging.hold(ef, n, env_anchor, pivot_frac=env_pivot)]
 
     n, ms = config.TIMING["turn_envelope"]
-    frames += [(f, ms) for f in imaging.flip_transition(ef, eb, "x", n, envelope_anchor)]
+    frames += [(f, ms) for f in imaging.flip_transition(ef, eb, "x", n, env_anchor, cross_pivot=1.0)]
 
     n, ms = config.TIMING["hold_envelope_back"]
-    frames += [(f, ms) for f in imaging.hold(eb, n, envelope_anchor)]
+    frames += [(f, ms) for f in imaging.hold(eb, n, env_anchor, pivot_frac=env_pivot)]
 
+    # Flap opens: the open envelope is much taller (flap up), so pivot the flip
+    # at the bottom edge -- the closed envelope squashes down and the open one
+    # grows upward from the same base, reading as the flap lifting.
     n, ms = config.TIMING["flap_open"]
-    frames += [(f, ms) for f in imaging.flip_transition(eb, eo, "y", n, envelope_anchor)]
+    frames += [
+        (f, ms)
+        for f in imaging.flip_transition(
+            eb, eo, "y", n, env_anchor, pivot_frac_a=1.0, pivot_frac_b=1.0, cross_pivot=0.5
+        )
+    ]
 
     n, ms = config.TIMING["hold_envelope_open"]
-    frames += [(f, ms) for f in imaging.hold(eo, n, envelope_anchor)]
+    frames += [(f, ms) for f in imaging.hold(eo, n, env_anchor, pivot_frac=env_pivot)]
 
+    # Card rises out of the open envelope's mouth while the envelope dissolves
+    # to plain leather, so the tall open envelope doesn't pop away at the hold.
     n, ms = config.TIMING["card_slide_out"]
-    bg = imaging.paste_with_pivot(
-        imaging.blank_canvas(), eo, envelope_anchor, shadow=config.OBJECT_SHADOW_STRENGTH
+    env_bg = imaging.paste_with_pivot(
+        imaging.blank_canvas(), eo, env_anchor, pivot_frac=env_pivot,
+        shadow=config.OBJECT_SHADOW_STRENGTH,
     )
+    mouth_y = env_bottom - config.ENVELOPE_MOUTH_FROM_BOTTOM_FRAC * eo.height
     frames += [
         (f, ms)
         for f in imaging.slide_reveal(
-            cc, n, canvas_w / 2, envelope_anchor[1], card_cover_anchor[1] - cc.height / 2, bg
+            cc, n, cx, mouth_y, card_cover_anchor[1] - cc.height / 2, env_bg, imaging.blank_canvas()
         )
     ]
 

@@ -155,7 +155,7 @@ def _shear_about_pivot(img, axis, shear_k, pivot):
 
 def flip_transition(
     img_a, img_b, axis, n_frames, anchor_point,
-    pivot_frac_a=0.5, pivot_frac_b=0.5, ease=ease_in_out_cubic,
+    pivot_frac_a=0.5, pivot_frac_b=0.5, cross_pivot=0.5, ease=ease_in_out_cubic,
 ):
     """Frames of img_a squashing flat and un-squashing into img_b, mimicking
     a card/envelope flipping over.
@@ -166,6 +166,10 @@ def flip_transition(
     pivot_frac_a / pivot_frac_b: where, along the scaling axis (0=leading
         edge, 0.5=center, 1=trailing edge) of img_a / img_b, the anchor
         point sits. E.g. for a lid hinged at its top edge, pivot_frac=0.
+    cross_pivot: where the anchor sits on the OTHER axis (the one not being
+        scaled). 0.5 centers; 1.0 bottom-aligns a 'y' flip / right-aligns an
+        'x' flip. Used to keep an envelope's bottom edge fixed while its flap
+        grows upward.
     """
     frames = []
     for i in range(n_frames):
@@ -178,10 +182,10 @@ def flip_transition(
         w, h = src.size
         if axis == "x":
             new_w, new_h = max(1, round(w * scale)), h
-            pivot_frac = (pivot, 0.5)
+            pivot_frac = (pivot, cross_pivot)
         else:
             new_w, new_h = w, max(1, round(h * scale))
-            pivot_frac = (0.5, pivot)
+            pivot_frac = (cross_pivot, pivot)
         resized = src.resize((new_w, new_h), Image.LANCZOS)
 
         # Foreshortening shear, peaking mid-flip and zero at the flat ends so
@@ -201,15 +205,21 @@ def flip_transition(
     return frames
 
 
-def slide_reveal(img, n_frames, x, y_start, y_end, background, ease=ease_in_out_cubic):
-    """img's top edge translates from y_start to y_end (horizontally
-    centered on x) over the held `background` frame, mimicking the card
-    sliding up out of the envelope."""
+def slide_reveal(img, n_frames, x, y_start, y_end, bg_start, bg_end=None, ease=ease_in_out_cubic):
+    """img's top edge translates from y_start to y_end (horizontally centered
+    on x), mimicking the card sliding up out of the envelope. The background
+    crossfades from bg_start (the open envelope) to bg_end (plain leather) over
+    the slide, so the tall open envelope dissolves away as the card emerges
+    rather than popping out at the following hold. bg_end defaults to
+    bg_start (no fade)."""
+    if bg_end is None:
+        bg_end = bg_start
     frames = []
     for i in range(n_frames):
         t = i / (n_frames - 1) if n_frames > 1 else 1.0
         te = ease(t)
         y = round(y_start + (y_end - y_start) * te)
+        background = Image.blend(bg_start, bg_end, te)
         frame = paste_with_pivot(
             background, img, (x, y), pivot_frac=(0.5, 0.0),
             shadow=config.OBJECT_SHADOW_STRENGTH,

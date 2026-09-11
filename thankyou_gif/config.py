@@ -23,6 +23,7 @@ SOURCE_IMAGE_SIZE = (1932, 2576)  # (width, height) of every photo as shot
 FILES = {
     "envelope_front": "envelope_front.jpg",
     "envelope_back": "envelope_back.jpg",   # flap closed, PAPYRUS embossed
+    "envelope_open": "envelope_open.jpg",    # flap lifted up, grey liner + mouth open
     "card_cover": "card_cover.jpg",         # closed card, "THANK YOU" face up
     "card_open": "card_open_blank.jpg",     # fully open card, both halves blank
 }
@@ -36,22 +37,21 @@ FILES = {
 BBOX_FRAC = {
     "envelope_front": (0.1072, 0.3482, 0.8734, 0.7295),
     "envelope_back": (0.1605, 0.3506, 0.8737, 0.7027),
+    "envelope_open": (0.1253, 0.1972, 0.8546, 0.8560),
     "card_cover": (0.1356, 0.3398, 0.8505, 0.6953),
     "card_open": (0.1734, 0.1712, 0.8318, 0.8308),
 }
 
+# In the open-envelope photo the flap lifts up, so the object is much taller
+# than the closed envelope. The card slides out of the mouth (the envelope's
+# widest point / shoulders, where the grey liner opening is); this is that
+# mouth's height above the envelope's bottom edge, as a fraction of the open
+# bbox height. Measured at ~0.315 (shoulders sit ~0.685 down from the top).
+ENVELOPE_MOUTH_FROM_BOTTOM_FRAC = 0.315
+
 # Horizontal fold line inside card_open, as a fraction of the card's own
 # bbox height (0 = top edge of card, 1 = bottom edge).
 CARD_FOLD_FRAC = 0.498
-
-# The envelope's flap triangle within envelope_back, as fractions of the
-# envelope's own bbox (0,0 = bbox top-left, 1,1 = bbox bottom-right).
-# Base runs along the top edge, apex points down.
-FLAP_TRIANGLE_FRAC = (
-    (0.010, -0.015),  # top-left
-    (0.980, -0.015),  # top-right
-    (0.510, 0.790),  # apex
-)
 
 # --- Handwriting (note + envelope address) ------------------------------------
 # The note and the envelope address are supplied as photos of real handwriting
@@ -80,9 +80,9 @@ ENVELOPE_ADDRESS_ALIGN = ("center", "center")
 
 # --- Canvas & look ------------------------------------------------------------
 
-CANVAS_SIZE = (640, 900)  # output GIF pixel size (width, height)
+CANVAS_SIZE = (544, 765)  # output GIF pixel size (width, height); sized to keep the file well under corporate email caps
 BG_COLOR = (61, 16, 16)   # flat fallback tone, only used if the leather sample can't load
-GIF_COLORS = 160          # palette size for the single shared GIF palette (see pipeline.py)
+GIF_COLORS = 132          # palette size for the single shared GIF palette (see pipeline.py)
 
 # Real leather backdrop for the canvas, instead of a flat fill -- the objects
 # then sit on the same textured surface they were photographed on, so their
@@ -124,24 +124,30 @@ OBJECT_SHADOW_BLUR = 16         # px
 FLIP_SHEAR = 0.0  # peak shear as a fraction of the object's cross-axis length
 
 # Vertical staging, as fractions of CANVAS_SIZE height. The envelope scenes
-# sit higher on the canvas; the card docks with its top edge (its hinge,
-# since the card is top-folded) at CARD_HINGE_Y_FRAC and opens from there.
-ENVELOPE_CENTER_Y_FRAC = 0.34
-CARD_HINGE_Y_FRAC = 0.50
+# are bottom-aligned at ENVELOPE_BOTTOM_Y_FRAC so the flap lifts upward from a
+# fixed base when it opens (the open envelope is much taller than the closed
+# one). The card docks with its top edge (its hinge, since the card is
+# top-folded) at CARD_HINGE_Y_FRAC and opens from there.
+ENVELOPE_BOTTOM_Y_FRAC = 0.82
+CARD_HINGE_Y_FRAC = 0.46
 
 # --- Timing -------------------------------------------------------------------
 # Each stage: (frame_count, ms_per_frame). Slow + eased, per "smooth and
 # slow feels premium" -- nothing here is snappy on purpose.
 
+# Holds are effectively free -- consecutive identical frames are collapsed by
+# the GIF optimizer into one long-duration frame -- so their frame counts are
+# just how long to dwell. The transition frame counts are the whole file-size
+# cost (every frame differs), so they're kept lean while staying smooth.
 TIMING = {
     "hold_envelope_front": (16, 60),
-    "turn_envelope": (26, 45),
+    "turn_envelope": (20, 50),
     "hold_envelope_back": (10, 60),
-    "flap_open": (18, 45),
-    "hold_envelope_open": (8, 60),
-    "card_slide_out": (20, 45),
+    "flap_open": (16, 52),
+    "hold_envelope_open": (10, 60),
+    "card_slide_out": (16, 55),
     "hold_card_cover": (12, 70),
-    "card_open": (24, 45),
+    "card_open": (20, 50),
     "hold_final": (30, 80),
 }
 

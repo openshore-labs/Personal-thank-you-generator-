@@ -31,7 +31,7 @@ def _preview(img, overlays_fn, name):
 
 
 def main():
-    for name in ("envelope_front", "envelope_back", "card_cover", "card_open"):
+    for name in ("envelope_front", "envelope_back", "envelope_open", "card_cover", "card_open"):
         img = imaging.load_source(name)
 
         def draw_bbox(draw, img, name=name):
@@ -39,18 +39,6 @@ def main():
             draw.rectangle((x0, y0, x1, y1), outline=(255, 0, 0), width=6)
 
         _preview(img, draw_bbox, f"bbox_{name}")
-
-    envelope_back = imaging.load_source("envelope_back")
-
-    def draw_flap(draw, img):
-        triangle = compositing.flap_triangle_px(img)
-        draw.polygon(triangle, outline=(0, 200, 255), width=6)
-
-    _preview(envelope_back, draw_flap, "flap_triangle")
-
-    envelope_front = imaging.load_source("envelope_front")
-    patched = compositing.envelope_with_flap_removed(envelope_back, envelope_front)
-    _preview(patched, lambda d, i: None, "envelope_flap_removed")
 
     card_open = imaging.load_source("card_open")
 

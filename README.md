@@ -31,31 +31,36 @@ interior (centered); the address is centered on the envelope front.
 
 ## How it's put together
 
-- `assets/source/` -- the four reference photos (envelope front, envelope
-  back/flap, card cover, card open blank) this whole pipeline is built from.
+- `assets/source/` -- the five reference photos (envelope front, envelope
+  back/flap-closed, envelope flap-open, card cover, card open blank) this
+  whole pipeline is built from.
 - `thankyou_gif/config.py` -- every tunable number: measured bounding boxes,
-  the ink-extraction params, where the note and address get written, the flap
-  triangle, canvas size, and per-stage timing. Start here to adjust anything.
+  the ink-extraction params, where the note and address get written, canvas
+  size, and per-stage timing. Start here to adjust anything.
 - `thankyou_gif/imaging.py` -- generic helpers: cropping to a measured bbox,
   and the pivoted "flip" transition used both for the envelope turning
   around (squash on the x-axis) and the card opening (squash on the
   y-axis, hinged at the card's top edge since it's a top-fold card).
 - `thankyou_gif/compositing.py` -- lifts the ink off a handwriting photo
   (`extract_ink`) and writes it to scale onto the card (`write_note`) or
-  envelope (`write_address`); also patches the flap's triangle out of the
-  envelope-back photo for the flap-open stage.
+  envelope (`write_address`).
 - `thankyou_gif/stages.py` -- assembles the full ordered sequence (see
   below) into one frame list.
 - `thankyou_gif/pipeline.py` -- quantizes and writes the GIF.
 
 ## The animation sequence
 
-1. Hold on the envelope front.
+1. Hold on the envelope front (addressed).
 2. Envelope turns around (front -> back).
-3. Hold on the envelope back.
-4. Flap opens.
-5. Hold on the opened envelope.
-6. Card slides up out of the envelope.
+3. Hold on the envelope back (flap closed, PAPYRUS).
+4. Flap opens -- a real photo of the envelope with its flap lifted
+   (`envelope_open.jpg`). The envelope stages are bottom-aligned
+   (`ENVELOPE_BOTTOM_Y_FRAC`), so the taller open envelope grows upward from
+   the same base edge and the flap reads as lifting rather than the whole
+   thing jumping.
+5. Hold on the opened envelope (grey liner, mouth open).
+6. Card rises out of the envelope's mouth while the envelope dissolves to
+   plain leather (so the tall open envelope doesn't pop away at the hold).
 7. Hold on the closed card cover ("THANK YOU").
 8. Card opens (hinged at its top edge -- it's a top-fold card, confirmed
    from the fold line in the blank open-card photo sitting at ~50% down a
@@ -68,30 +73,12 @@ interior (centered); the address is centered on the envelope front.
 python calibrate.py
 ```
 
-Writes PNGs to `output/calibration/` with the measured bboxes, the flap
-triangle, and the note / address write-rectangles drawn on top of the actual
-source photos -- check these any time you edit `config.py`, before spending
-time on a full render. `card_write_rect.png` and `envelope_address_rect.png`
-show exactly where the handwriting will be fit and centered
-(`CARD_WRITE_RECT_FRAC` / `ENVELOPE_ADDRESS_RECT_FRAC` in config.py).
-
-## Known placeholder: the flap-open fill
-
-There's no reference photo of the envelope with its flap actually lifted,
-so `compositing.envelope_with_flap_removed()` fakes it: it patches the
-flap's triangle out with a flat color sampled from the envelope's own blank
-panel, inflated and heavily blurred so it fully covers the flap's thin grey
-printed border even though `FLAP_TRIANGLE_FRAC` in config.py was eyeballed
-off a photo rather than precisely detected. It looks fine in motion (the
-transition is fast) but is visibly soft/faded if you pause on that frame.
-Two ways to improve it later, either works with the existing pivot machinery
-in `imaging.flip_transition`:
-
-- Take an actual photo of the envelope with the flap lifted open, drop it
-  in as a fifth source asset, and swap it in for `envelope_open_src` in
-  `stages.py` instead of the synthesized fill.
-- Refine `FLAP_TRIANGLE_FRAC` against a higher-precision edge trace, then
-  reduce the inflate/blur in `envelope_with_flap_removed`.
+Writes PNGs to `output/calibration/` with the measured object bboxes and the
+note / address write-rectangles drawn on top of the actual source photos --
+check these any time you edit `config.py`, before spending time on a full
+render. `card_write_rect.png` and `envelope_address_rect.png` show exactly
+where the handwriting will be fit and centered (`CARD_WRITE_RECT_FRAC` /
+`ENVELOPE_ADDRESS_RECT_FRAC` in config.py).
 
 ## Playback, delivery, and size
 
@@ -107,11 +94,12 @@ in `imaging.flip_transition`:
   that are *embedded inline* in an HTML message body to their first frame --
   only applies to inline embedding, not to an attached file.
 - **Size:** current defaults produce roughly an 8 MB file for the full
-  9-stage sequence at 640x900 (about 11 MB "on the wire" after email base64
-  encoding) -- comfortably under every consumer mail cap (Gmail 25 MB,
-  iCloud/Outlook ~20 MB). If you ever need it smaller, drop `CANVAS_SIZE` or
-  `GIF_COLORS` in config.py; if you want more detail and don't mind a bigger
-  file, raise `CANVAS_SIZE`.
+  9-stage sequence at 544x765 (about 11 MB "on the wire" after email base64
+  encoding) -- under every consumer mail cap (Gmail 25 MB, iCloud/Outlook
+  ~20 MB) with margin for stricter corporate gateways. The size cost is the
+  transition frames (holds are collapsed to one frame each by the optimizer),
+  so the biggest levers are `CANVAS_SIZE` and the transition frame counts in
+  `TIMING`; raise `CANVAS_SIZE` for more detail if you don't mind a bigger file.
 
 ## Look / realism
 
