@@ -7,9 +7,11 @@ on different axes with different pivot points).
 import math
 import os
 
+import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from scipy import ndimage
 
-from . import background, config
+from . import config
 
 
 def load_source(name):
@@ -33,6 +35,32 @@ def crop_to_bbox(img, name, pad_frac=0.015):
     return img.crop((x0, y0, x1, y1))
 
 
+def extract_object(img, name, pad_frac=0.02):
+    """Cut the object (envelope/card) out of its maroon-leather photo, returning
+    an RGBA crop where the leather is transparent so it can sit on plain white.
+
+    The paper is much brighter than the leather, so a luminance threshold
+    separates them; interior holes are filled (dark ink strokes inside the card
+    stay opaque), only the largest piece is kept (drops stray bright specks on
+    the leather), and the mask is eroded a touch to shed the thin leather fringe
+    at the very edge, then feathered for a clean anti-aliased boundary."""
+    crop = crop_to_bbox(img, name, pad_frac).convert("RGB")
+    gray = np.asarray(crop.convert("L"))
+    mask = ndimage.binary_fill_holes(gray > config.OBJECT_MASK_THRESHOLD)
+    labels, n = ndimage.label(mask)
+    if n > 1:
+        sizes = ndimage.sum(mask, labels, range(1, n + 1))
+        mask = labels == (int(np.argmax(sizes)) + 1)
+    if config.OBJECT_MASK_ERODE:
+        mask = ndimage.binary_erosion(mask, iterations=config.OBJECT_MASK_ERODE)
+    alpha = Image.fromarray((mask * 255).astype("uint8")).filter(
+        ImageFilter.GaussianBlur(config.OBJECT_EDGE_FEATHER)
+    )
+    rgba = crop.convert("RGBA")
+    rgba.putalpha(alpha)
+    return rgba
+
+
 def ease_in_out_cubic(t):
     if t < 0.5:
         return 4 * t * t * t
@@ -46,7 +74,7 @@ def fit_width(img, target_width):
 
 
 def blank_canvas():
-    return background.leather_canvas().copy()
+    return Image.new("RGB", config.CANVAS_SIZE, config.BG_COLOR)
 
 
 def _feathered_mask(size, feather_px):
@@ -62,16 +90,14 @@ def _feathered_mask(size, feather_px):
 
 
 def _object_mask(img, feather_px):
-    """The paste mask for an object: its own alpha if it carries one (e.g. a
-    sheared image with transparent corners), otherwise a solid rectangle,
-    with the outer edge feathered so it dissolves into the background."""
+    """The paste mask for an object: its own alpha if it carries one (a cut-out
+    RGBA object or a sheared image with transparent corners), otherwise a solid
+    rectangle optionally feathered at the outer edge."""
     if img.mode == "RGBA":
-        base = img.getchannel("A")
-    else:
-        base = Image.new("L", img.size, 255)
+        return img.getchannel("A")
+    base = Image.new("L", img.size, 255)
     if feather_px:
-        feather = _feathered_mask(img.size, feather_px)
-        base = ImageChops.multiply(base, feather)
+        base = ImageChops.multiply(base, _feathered_mask(img.size, feather_px))
     return base
 
 
@@ -230,3 +256,84 @@ def slide_reveal(img, n_frames, x, y_start, y_end, bg_start, bg_end=None, ease=e
 
 def feather_alpha(mask_img, radius):
     return mask_img.filter(ImageFilter.GaussianBlur(radius))
+
+
+def _lerp(a, b, t):
+    return a + (b - a) * t
+
+
+def _compose(cx, layers):
+    """Alpha-composite (rgba, top_y) layers, bottom-first, centered at cx, on a
+    fresh canvas. Returns RGB."""
+    frame = blank_canvas().convert("RGBA")
+    for rgba, top_y in layers:
+        frame.alpha_composite(rgba.convert("RGBA"), (round(cx - rgba.width / 2), round(top_y)))
+    return frame.convert("RGB")
+
+
+def _clip_below(rgba, local_y):
+    """Copy of rgba with rows at/below local_y made transparent (rows above
+    local_y are untouched). Used to hide the part of the card still tucked
+    inside the envelope, below the fixed mouth line."""
+    out = rgba.copy()
+    alpha = np.asarray(out.getchannel("A")).copy()
+    cut = max(0, min(out.height, int(round(local_y))))
+    alpha[cut:] = 0
+    out.putalpha(Image.fromarray(alpha))
+    return out
+
+
+def card_pull(envelope_bg, card, n, cx, mouth_y, card_top0, card_top1, ease=ease_in_out_cubic):
+    """The card rises up out of the envelope's mouth while the envelope itself
+    stays put -- a real "pulled from the pocket" motion rather than sliding up
+    the screen. The envelope's front pocket wall is already the lower part of
+    envelope_bg, so the card is simply clipped at the fixed mouth line: only
+    the portion that has risen above it is drawn, and z-order does the rest
+    (the still-life pocket wall in envelope_bg naturally covers the hidden
+    part since we never paint over it there).
+
+    card_top0 should equal mouth_y (card fully hidden, nothing visible yet);
+    card_top1 is where the card ends up once fully clear of the envelope.
+    """
+    frames = []
+    for i in range(n):
+        t = i / (n - 1) if n > 1 else 1.0
+        te = ease(t)
+        card_top = _lerp(card_top0, card_top1, te)
+        visible = _clip_below(card, mouth_y - card_top)
+        frames.append(paste_with_pivot(envelope_bg, visible, (cx, card_top), pivot_frac=(0.5, 0.0)))
+    return frames
+
+
+def card_unfold(cover, note_top, note_bottom, n, cx, fold_y, ease=ease_in_out_cubic):
+    """The closed cover unfolds around the fold line (top-fold hinge) to
+    reveal the note underneath -- physically, not a texture-swap flip:
+
+    First half: the cover foreshortens (shrinks vertically, top-anchored at
+    the fixed hinge/fold line) as if lifting away, while note_bottom -- which
+    was there the whole time, just hidden underneath -- sits fully visible
+    beneath it the entire half, progressively uncovered by the shrinking
+    cover starting from its free (bottom) edge. That's the physically correct
+    order for a top-hinged lid lifting off, viewed from directly above.
+
+    Second half: with the cover fully gone, note_top (the lid's interior
+    face, blank) grows in above the same hinge line, bottom-anchored, exactly
+    mirroring the cover's own shrink -- as if the lid has continued its
+    rotation and settled open above the hinge. At the end, note_top + fixed
+    note_bottom together exactly reproduce the true, fully-open card photo.
+    """
+    frames = []
+    for i in range(n):
+        t = i / (n - 1) if n > 1 else 1.0
+        if t <= 0.5:
+            local_t = ease(t / 0.5) if n > 1 else 1.0
+            h = max(1, round(cover.height * (1 - local_t)))
+            shrinking = cover.resize((cover.width, h), Image.LANCZOS)
+            layers = [(note_bottom, fold_y), (shrinking, fold_y - h)]
+        else:
+            local_t = ease((t - 0.5) / 0.5)
+            h = max(1, round(note_top.height * local_t))
+            growing = note_top.resize((note_top.width, h), Image.LANCZOS)
+            layers = [(note_bottom, fold_y), (growing, fold_y - h)]
+        frames.append(_compose(cx, layers))
+    return frames

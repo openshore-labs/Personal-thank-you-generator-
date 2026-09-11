@@ -81,35 +81,30 @@ ENVELOPE_ADDRESS_ALIGN = ("center", "center")
 # --- Canvas & look ------------------------------------------------------------
 
 CANVAS_SIZE = (544, 765)  # output GIF pixel size (width, height); sized to keep the file well under corporate email caps
-BG_COLOR = (61, 16, 16)   # flat fallback tone, only used if the leather sample can't load
+BG_COLOR = (255, 255, 255)  # plain white background (no leather)
 GIF_COLORS = 132          # palette size for the single shared GIF palette (see pipeline.py)
 
-# Real leather backdrop for the canvas, instead of a flat fill -- the objects
-# then sit on the same textured surface they were photographed on, so their
-# edges don't read as a hard texture-to-flat seam. This names a clean,
-# object-free leather band in one source photo (fractions of that photo);
-# background.py tiles + vignettes it to canvas size. Re-pick if a retake
-# moves the objects.
-LEATHER_SAMPLE_SOURCE = "envelope_front"
-LEATHER_SAMPLE_FRAC = (0.0, 0.0, 1.0, 0.318)  # full-width band above the envelope
-LEATHER_VIGNETTE = 0.28  # 0 = none, 1 = strong corner darkening
+# The card and envelope are photographed on maroon leather; to sit them on a
+# clean white background they're cut out of their photos (imaging.extract_object)
+# by thresholding the bright paper off the dark leather, filling interior holes
+# (so dark ink strokes inside stay opaque), and keeping the largest piece.
+OBJECT_MASK_THRESHOLD = 118  # luminance above this is object, below is leather
+OBJECT_MASK_ERODE = 4        # px pulled in from the mask edge to drop leather fringe
+OBJECT_EDGE_FEATHER = 1.2    # px softening on the cutout edge (anti-aliasing)
 
 # Width objects are scaled to on canvas, and duration to fit within before
 # padding to keep frames visually consistent across stages that mix
 # landscape (envelope, closed card) and portrait (open card) subjects.
-ENVELOPE_TARGET_WIDTH = 560
-CARD_TARGET_WIDTH = 560
+ENVELOPE_TARGET_WIDTH = 500
+CARD_TARGET_WIDTH = 480
 
-# How far the rectangular object crops are feathered into the leather
-# background when pasted (px), so the thin real-leather ring around each
-# crop dissolves into the canvas leather instead of ending at a hard edge.
-PASTE_FEATHER_PX = 4
+# Objects are cut out as RGBA and carry their own alpha edge, so no rectangle
+# feather is applied on paste.
+PASTE_FEATHER_PX = 0
 
-# Soft contact shadow under objects on the leather, so they sit on the
-# surface instead of looking stamped onto it. During the flip transitions the
-# strength is scaled by the object's squash factor (full when flat/facing the
-# viewer, fading to none when edge-on) so it doesn't pop at stage boundaries.
-OBJECT_SHADOW_STRENGTH = 0.30  # 0 = none
+# Contact shadow under objects. Off (0) -- the pieces sit flat on plain white,
+# per the founder's call. The machinery stays so it can be re-enabled.
+OBJECT_SHADOW_STRENGTH = 0.0   # 0 = none
 OBJECT_SHADOW_OFFSET = (7, 11)  # (dx, dy) px on the output canvas
 OBJECT_SHADOW_BLUR = 16         # px
 
@@ -145,10 +140,15 @@ TIMING = {
     "hold_envelope_back": (10, 60),
     "flap_open": (16, 52),
     "hold_envelope_open": (10, 60),
-    "card_slide_out": (16, 55),
+    "card_pull": (12, 55),      # card rises out of the envelope mouth, envelope fixed
+    "card_settle": (10, 55),    # crossfades envelope away, card drifts to its rest spot
     "hold_card_cover": (12, 70),
-    "card_open": (20, 50),
+    "card_open": (22, 55),      # cover lifts away, note unfolds in beneath it
     "hold_final": (30, 80),
 }
+
+# How far above the envelope's mouth the card rests once fully pulled clear,
+# before settling into its final cover-hold position (px on canvas).
+CARD_CLEAR_MARGIN = 22
 
 LOOP = None  # None = play once, freeze on the final still (no GIF loop extension written)
