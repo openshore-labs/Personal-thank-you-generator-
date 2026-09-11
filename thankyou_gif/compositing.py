@@ -8,7 +8,16 @@ from PIL import Image, ImageFilter
 from . import config, imaging
 
 
-def extract_ink(source):
+def _apply_crop(img, crop_frac):
+    """Crop to a (x0, y0, x1, y1) rect given as fractions of the image."""
+    if not crop_frac:
+        return img
+    x0, y0, x1, y1 = crop_frac
+    w, h = img.size
+    return img.crop((round(x0 * w), round(y0 * h), round(x1 * w), round(y1 * h)))
+
+
+def extract_ink(source, crop_frac=None):
     """Lift the handwriting off a photo of it on paper: returns an RGBA image
     where the pen strokes keep their natural colour and everything else (paper,
     lighting gradients, and the embossed show-through from writing on the pages
@@ -18,8 +27,16 @@ def extract_ink(source):
     max-filtered, heavily blurred copy), so only marks meaningfully darker
     than their surrounding paper survive -- faint embossing divides out to
     ~1.0 and drops away.
+
+    crop_frac restricts extraction to a region of the photo, as (x0, y0, x1,
+    y1) fractions. Worth using whenever the shot caught more than the one
+    piece of handwriting you want: anything meaningfully darker than its
+    surrounding paper reads as ink, so a desk, a keyboard, the edge of the
+    sheet underneath -- or, most importantly, a *different* note's writing
+    higher up the page -- will all be lifted too if they're left in frame.
     """
     img = (source if isinstance(source, Image.Image) else Image.open(source)).convert("RGB")
+    img = _apply_crop(img, crop_frac)
     gray = img.convert("L")
     paper = gray.filter(
         ImageFilter.MaxFilter(2 * config.INK_MAX_RADIUS + 1)
@@ -45,12 +62,13 @@ def _rect_in_bbox(base_img, bbox_name, rect_frac):
     return (x0 + fx0 * bw, y0 + fy0 * bh, x0 + fx1 * bw, y0 + fy1 * bh)
 
 
-def place_handwriting(base_img, photo_source, dst_rect, align):
+def place_handwriting(base_img, photo_source, dst_rect, align, crop_frac=None):
     """Extract the ink from photo_source and write it onto base_img, scaled to
     fit within dst_rect (preserving the handwriting's aspect ratio) and aligned
     within it. align is (horizontal, vertical) from {left/center/right} x
-    {top/center/bottom}."""
-    ink, bbox = extract_ink(photo_source)
+    {top/center/bottom}. crop_frac restricts which part of the photo is
+    extracted (see extract_ink)."""
+    ink, bbox = extract_ink(photo_source, crop_frac)
     crop = ink.crop(bbox)
 
     dw, dh = dst_rect[2] - dst_rect[0], dst_rect[3] - dst_rect[1]
@@ -68,13 +86,15 @@ def place_handwriting(base_img, photo_source, dst_rect, align):
     return out.convert("RGB")
 
 
-def write_note(card_img, note_source):
+def write_note(card_img, note_source, crop_frac=None):
     """Write the extracted note onto the open card's interior."""
     rect = _rect_in_bbox(card_img, "card_open", config.CARD_WRITE_RECT_FRAC)
-    return place_handwriting(card_img, note_source, rect, config.CARD_WRITE_ALIGN)
+    return place_handwriting(card_img, note_source, rect, config.CARD_WRITE_ALIGN, crop_frac)
 
 
-def write_address(envelope_front_img, address_source):
+def write_address(envelope_front_img, address_source, crop_frac=None):
     """Write the extracted address onto the envelope front."""
     rect = _rect_in_bbox(envelope_front_img, "envelope_front", config.ENVELOPE_ADDRESS_RECT_FRAC)
-    return place_handwriting(envelope_front_img, address_source, rect, config.ENVELOPE_ADDRESS_ALIGN)
+    return place_handwriting(
+        envelope_front_img, address_source, rect, config.ENVELOPE_ADDRESS_ALIGN, crop_frac
+    )

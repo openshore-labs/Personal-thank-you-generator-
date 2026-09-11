@@ -20,8 +20,9 @@ def _shared_palette(frames):
     return montage.quantize(colors=config.GIF_COLORS, method=Image.Quantize.MEDIANCUT)
 
 
-def render(note_path=None, address_path=None, output_path=None):
-    frames_with_timing = stages.build_frames(note_path, address_path)
+def render(note_path=None, address_path=None, output_path=None,
+           note_crop=None, address_crop=None):
+    frames_with_timing = stages.build_frames(note_path, address_path, note_crop, address_crop)
     frames = [f for f, _ in frames_with_timing]
     durations = [ms for _, ms in frames_with_timing]
 

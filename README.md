@@ -31,6 +31,19 @@ extraction (see below) handles the paper, shadows, and any embossed
 show-through from previous pages. The note is fit to scale onto the card
 interior (centered); the address is centered on the envelope front.
 
+**If the shot caught anything besides the handwriting you want, crop it**
+with `--note-crop` / `--address-crop` (`x0,y0,x1,y1` fractions of that
+photo). Anything meaningfully darker than its surrounding paper reads as
+ink, so a desk, a keyboard, the edge of the sheet underneath -- or, most
+importantly, a *different* note's writing further up the page -- all get
+lifted too if left in frame. Check the crop before rendering; writing the
+wrong person's name onto a card is the one mistake worth being careful
+about here.
+
+Note that the note is fit to scale *preserving its own proportions*, so a
+short/wide note simply sits smaller on the card with more whitespace than a
+long/portrait one does. That's correct -- it's the handwriting's real shape.
+
 ## How it's put together
 
 - `assets/source/` -- the five reference photos (envelope front, envelope

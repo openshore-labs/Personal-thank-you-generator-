@@ -20,16 +20,18 @@ def _fitted(img, name, target_width):
     return imaging.fit_width(imaging.extract_object(img, name), target_width)
 
 
-def build_frames(note_path=None, address_path=None):
+def build_frames(note_path=None, address_path=None, note_crop=None, address_crop=None):
     envelope_front_src = imaging.load_source("envelope_front")
     envelope_back_src = imaging.load_source("envelope_back")
     card_cover_src = imaging.load_source("card_cover")
     card_open_src = imaging.load_source("card_open")
 
     if note_path:
-        card_open_src = compositing.write_note(card_open_src, note_path)
+        card_open_src = compositing.write_note(card_open_src, note_path, note_crop)
     if address_path:
-        envelope_front_src = compositing.write_address(envelope_front_src, address_path)
+        envelope_front_src = compositing.write_address(
+            envelope_front_src, address_path, address_crop
+        )
 
     ef = _fitted(envelope_front_src, "envelope_front", config.ENVELOPE_TARGET_WIDTH)
     eb = _fitted(envelope_back_src, "envelope_back", config.ENVELOPE_TARGET_WIDTH)
