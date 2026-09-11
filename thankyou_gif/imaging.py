@@ -46,7 +46,8 @@ def extract_object(img, name, pad_frac=0.02):
     at the very edge, then feathered for a clean anti-aliased boundary."""
     crop = crop_to_bbox(img, name, pad_frac).convert("RGB")
     gray = np.asarray(crop.convert("L"))
-    mask = ndimage.binary_fill_holes(gray > config.OBJECT_MASK_THRESHOLD)
+    threshold = config.OBJECT_MASK_THRESHOLD_OVERRIDES.get(name, config.OBJECT_MASK_THRESHOLD)
+    mask = ndimage.binary_fill_holes(gray > threshold)
     labels, n = ndimage.label(mask)
     if n > 1:
         sizes = ndimage.sum(mask, labels, range(1, n + 1))
@@ -305,33 +306,56 @@ def card_pull(envelope_bg, card, n, cx, mouth_y, card_top0, card_top1, ease=ease
     return frames
 
 
-def card_unfold(cover, note_top, note_bottom, n, cx, fold_y, ease=ease_in_out_cubic):
-    """The closed cover unfolds around the fold line (top-fold hinge) to
-    reveal the note underneath -- physically, not a texture-swap flip:
+def card_unfold(cover, note_top, note_bottom, n, cx, fold_y, ease=ease_in_out_cubic,
+                 open_frac=0.62):
+    """The closed cover simply opens up -- one continuous motion, not a flip.
 
-    First half: the cover foreshortens (shrinks vertically, top-anchored at
-    the fixed hinge/fold line) as if lifting away, while note_bottom -- which
-    was there the whole time, just hidden underneath -- sits fully visible
-    beneath it the entire half, progressively uncovered by the shrinking
-    cover starting from its free (bottom) edge. That's the physically correct
-    order for a top-hinged lid lifting off, viewed from directly above.
+    The cover shrinks vertically, top-anchored at the fixed hinge/fold line
+    (the exact spot the preceding hold left it at, so there's zero jump at
+    the start), uncovering note_bottom -- which was there underneath it the
+    whole time -- from its free (bottom) edge upward as it shrinks. Once
+    it's most of the way open, note_top (the blank interior) settles in
+    above the fold to complete the card, matching the true open-card photo
+    exactly for a clean handoff into the following hold. note_top isn't
+    drawn at all before that -- showing it any earlier would flash the top
+    of the note into view before the cover has actually moved out of the
+    way for it.
 
-    Second half: with the cover fully gone, note_top (the lid's interior
-    face, blank) grows in above the same hinge line, bottom-anchored, exactly
-    mirroring the cover's own shrink -- as if the lid has continued its
-    rotation and settled open above the hinge. At the end, note_top + fixed
-    note_bottom together exactly reproduce the true, fully-open card photo.
+    open_frac: the point (0-1) in the transition where the cover finishes
+    shrinking and note_top begins settling in. Kept >0.5 so lifting the
+    cover away -- the main event -- gets most of the time; note_top's
+    entrance is a quick finishing touch, not a second act.
     """
+    # cover's own top edge carries extract_object's small crop padding plus
+    # its anti-aliasing feather (soft/near-transparent alpha over roughly its
+    # first 10px, meant for a real external contour -- and, right at the very
+    # top, a sliver of the original leather background that was only ever
+    # meant to stay hidden under near-zero alpha). Here that edge sits right
+    # at the fold, on top of note_bottom's own first line of text: left
+    # alone, the soft alpha lets a faint ghost of that text bleed through
+    # even though cover is otherwise tall enough to cover it. It's a purely
+    # internal seam in this composite, not a real edge, so just trim it off
+    # rather than trying to salvage it.
+    cover = cover.crop((0, 10, cover.width, cover.height))
+
+    # cover and note_bottom come from two different photos, so their heights
+    # don't match to the pixel -- pad cover's starting height a hair so it
+    # fully covers note_bottom at t=0 instead of leaving a sliver of text
+    # peeking out from under its bottom edge.
+    start_h = max(cover.height, note_bottom.height + 6)
+    if start_h != cover.height:
+        cover = cover.resize((cover.width, start_h), Image.LANCZOS)
+
     frames = []
     for i in range(n):
         t = i / (n - 1) if n > 1 else 1.0
-        if t <= 0.5:
-            local_t = ease(t / 0.5) if n > 1 else 1.0
+        if t <= open_frac:
+            local_t = ease(t / open_frac) if open_frac > 0 else 1.0
             h = max(1, round(cover.height * (1 - local_t)))
             shrinking = cover.resize((cover.width, h), Image.LANCZOS)
-            layers = [(note_bottom, fold_y), (shrinking, fold_y - h)]
+            layers = [(note_bottom, fold_y), (shrinking, fold_y)]
         else:
-            local_t = ease((t - 0.5) / 0.5)
+            local_t = ease((t - open_frac) / (1 - open_frac))
             h = max(1, round(note_top.height * local_t))
             growing = note_top.resize((note_top.width, h), Image.LANCZOS)
             layers = [(note_bottom, fold_y), (growing, fold_y - h)]

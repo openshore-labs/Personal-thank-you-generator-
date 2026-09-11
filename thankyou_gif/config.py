@@ -89,6 +89,15 @@ GIF_COLORS = 132          # palette size for the single shared GIF palette (see 
 # by thresholding the bright paper off the dark leather, filling interior holes
 # (so dark ink strokes inside stay opaque), and keeping the largest piece.
 OBJECT_MASK_THRESHOLD = 118  # luminance above this is object, below is leather
+# Per-photo override for OBJECT_MASK_THRESHOLD. envelope_front has a specular
+# highlight on the leather right at its bottom-right edge, brighter than
+# typical leather (but well under paper-white) -- the default threshold let a
+# ragged fringe of it bleed into the mask there. envelope_open needs to stay
+# on the low default: its grey foil liner is legitimately much darker than
+# white paper and would get excluded by a higher threshold.
+OBJECT_MASK_THRESHOLD_OVERRIDES = {
+    "envelope_front": 170,
+}
 OBJECT_MASK_ERODE = 4        # px pulled in from the mask edge to drop leather fringe
 OBJECT_EDGE_FEATHER = 1.2    # px softening on the cutout edge (anti-aliasing)
 

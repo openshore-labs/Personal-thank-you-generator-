@@ -70,13 +70,13 @@ interior (centered); the address is centered on the envelope front.
 7. Once clear, the card drifts down to its resting spot as the (now empty)
    envelope fades away to white.
 8. Hold on the closed card cover ("THANK YOU").
-9. Card unfolds (`imaging.card_unfold`) -- not a texture-swap flip. The cover
-   foreshortens away (top-anchored at the fold/hinge) revealing the note
-   underneath, which was there the whole time just hidden beneath it,
-   starting from its free (bottom) edge -- the physically correct order for
-   a top-hinged lid lifting off, viewed from directly above. Then the
-   (blank) interior of the lid grows in above the fold to complete the open
-   card, as if it settled open after a full rotation.
+9. Card unfolds (`imaging.card_unfold`) -- kept deliberately simple, one
+   motion, no flip. The cover shrinks away, top-anchored at the exact spot
+   the preceding hold left it (no jump at the start), uncovering the note --
+   which was there the whole time just hidden beneath it -- from its free
+   (bottom) edge upward as it shrinks. Once it's open, the (blank) interior
+   above the fold settles into place to complete the card, matching the true
+   open-card photo exactly.
 10. Hold on the finished card with the note.
 
 ## Calibration
@@ -121,14 +121,21 @@ where the handwriting will be fit and centered (`CARD_WRITE_RECT_FRAC` /
   strokes inside the card stay opaque), keeps only the largest connected
   piece, and erodes the mask a touch to shed the thin leather fringe right at
   the edge (`OBJECT_MASK_*` in config.py). No background texture, no contact
-  shadow -- a clean product-shot look, by design.
+  shadow -- a clean product-shot look, by design. One photo
+  (`envelope_front`) needed a higher per-photo threshold
+  (`OBJECT_MASK_THRESHOLD_OVERRIDES`) to fully clear a specular highlight on
+  the leather near one corner that the default threshold let bleed through
+  as a ragged fringe -- worth knowing if a future photo needs the same.
 - **The card is pulled from the envelope, not slid up the screen**
   (`imaging.card_pull`): the envelope stays fixed and the rising card is
   clipped at its fixed mouth line, so it's genuinely occluded by the
   envelope's own pocket wall until it clears it.
-- **The card unfolds instead of flipping** (`imaging.card_unfold`): the cover
-  foreshortens away to reveal the note that was hidden beneath it the whole
-  time, rather than doing an instant texture swap when a squash reaches zero.
+- **The card unfolds in one simple motion, not a flip** (`imaging.card_unfold`):
+  the cover shrinks away, top-anchored at the exact spot the preceding hold
+  left it, to reveal the note that was hidden beneath it the whole time. The
+  interior above the fold isn't drawn at all until the cover is most of the
+  way open (`open_frac`) -- showing it any earlier would flash the top of the
+  note into view before the cover has actually moved out of the way for it.
 - **The handwriting reads as real ink on the card / envelope paper**, not a
   pasted photo of a sheet. `compositing.extract_ink` lifts just the pen strokes
   off the handwriting photo (dividing out the paper, lighting, and any embossed
