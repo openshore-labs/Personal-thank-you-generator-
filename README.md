@@ -115,24 +115,41 @@ in `imaging.flip_transition`:
   and every frame is composited over that. Object crops are feathered into it
   (`PASTE_FEATHER_PX`) so their edges dissolve into the leather instead of
   ending at a hard rectangle.
+- **Everything is grounded with a soft contact shadow** (`OBJECT_SHADOW_*`
+  in config.py, drawn in `imaging._draw_contact_shadow`) so objects rest on
+  the leather rather than looking stamped on. During the flip transitions the
+  shadow fades with the object's squash factor, so it matches the neighbouring
+  holds exactly and never pops.
+- **The composited note reads as ink on the card's own paper**, not a pasted
+  rectangle (`compositing.composite_note`, `NOTE_*` in config.py): its paper
+  tone is gain-shifted toward the card's blank-panel tone (`NOTE_EXPOSURE_MATCH`),
+  it carries the card's own paper grain (`NOTE_GRAIN_STRENGTH`), and it casts
+  a soft contact shadow (`NOTE_SHADOW_STRENGTH`). See the note about that
+  shadow knob under "when real notes arrive" below.
 - **One shared GIF palette** for the whole animation (`pipeline._shared_palette`),
   derived from frames sampled across the sequence, rather than a separate
   palette per frame -- the latter makes the photographed grain shimmer
   frame-to-frame. Dithering is off for the same reason (and it roughly
   halves the file size).
+- **Foreshortening shear on the flips is built but shipped off**
+  (`FLIP_SHEAR = 0` in config.py). It adds a subtle 3D skew to the envelope
+  turn and card open, but its peak lands where the object is edge-on (a thin
+  strip, so it's barely visible), while costing ~1.5 MB and pushing the file
+  toward email size caps. Set a small value like `0.06` to turn it on -- it's
+  tested and alpha-correct.
 
-## Still to do when real handwritten-note photos arrive
+## When real handwritten-note photos arrive
 
-The note compositing (`compositing.composite_note`) currently does a straight
-perspective warp with a light edge feather -- good geometry, but it will look
-pasted-on unless the note photo happens to match the card's lighting. Once
-real notes are in hand, the high-value additions (all local to
-`composite_note`, no change to the warp math) are, in order:
+The note-realism pipeline above (exposure-match, grain, contact shadow) is in
+and validated against a placeholder, but two things are worth doing once real
+notes are in hand:
 
-1. Auto exposure / white-balance match: sample the card's own blank-panel
-   tone and gain-shift the note to match, so you don't have to nail lighting
-   by hand for every note.
-2. A soft contact shadow under the warped note, so it reads as sitting on the
-   paper rather than floating.
-3. A faint paper-grain multiply over the note so a crisper note photo doesn't
-   look too clean against the card's texture.
+1. **Set `NOTE_SHADOW_STRENGTH` to match the note format.** If your note is a
+   separate slip of paper tucked into the card, keep or raise it (it sells the
+   depth). If the writing is meant to read as ink directly on the card's own
+   bottom-half paper, drop it toward 0 -- a full-rectangle shadow would make
+   the note look like a separate sheet. The exposure-match and grain are wins
+   either way.
+2. **Check `note_quad.png` from `calibrate.py`** and true up `NOTE_QUAD_FRAC`
+   if a real note looks skewed once composited (the quad has 4 independent
+   corners for exactly this).

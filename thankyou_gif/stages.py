@@ -61,7 +61,9 @@ def build_frames(note_path=None):
     frames += [(f, ms) for f in imaging.hold(eo, n, envelope_anchor)]
 
     n, ms = config.TIMING["card_slide_out"]
-    bg = imaging.paste_with_pivot(imaging.blank_canvas(), eo, envelope_anchor)
+    bg = imaging.paste_with_pivot(
+        imaging.blank_canvas(), eo, envelope_anchor, shadow=config.OBJECT_SHADOW_STRENGTH
+    )
     frames += [
         (f, ms)
         for f in imaging.slide_reveal(

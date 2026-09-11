@@ -64,6 +64,30 @@ NOTE_QUAD_FRAC = (
     (0.10, 0.960),  # bottom-left
 )
 
+# --- Note realism -------------------------------------------------------------
+# Make a composited note read as ink on the card's own paper rather than a
+# pasted rectangle. All three are applied in compositing.composite_note.
+
+# Pull the note's paper white toward the card's blank-panel tone (warm
+# off-white), so a note shot under different lighting doesn't glow. 0 = leave
+# the note's own exposure untouched, 1 = fully match the card panel.
+NOTE_EXPOSURE_MATCH = 0.85
+
+# Soft contact shadow cast by the note onto the card underneath it. This is
+# the one knob to set once real note photos are in hand: if the notes are a
+# separate slip of paper tucked into the card, keep/raise it (it sells the
+# depth); if the writing is meant to read as ink directly on the card's own
+# bottom-half paper, drop it toward 0 (a full-rectangle shadow would make it
+# look like a separate sheet). The exposure-match and grain below are wins
+# either way.
+NOTE_SHADOW_STRENGTH = 0.22   # 0 = none
+NOTE_SHADOW_OFFSET = (4, 6)   # (dx, dy) px in source-photo space
+NOTE_SHADOW_BLUR = 11         # px
+
+# Imprint the card's own paper grain onto the note so a crisp note photo
+# shares the card's texture. 0 = none, 1 = full-strength card grain.
+NOTE_GRAIN_STRENGTH = 0.5
+
 # --- Canvas & look ------------------------------------------------------------
 
 CANVAS_SIZE = (640, 900)  # output GIF pixel size (width, height)
@@ -90,6 +114,24 @@ CARD_TARGET_WIDTH = 560
 # background when pasted (px), so the thin real-leather ring around each
 # crop dissolves into the canvas leather instead of ending at a hard edge.
 PASTE_FEATHER_PX = 4
+
+# Soft contact shadow under objects on the leather, so they sit on the
+# surface instead of looking stamped onto it. During the flip transitions the
+# strength is scaled by the object's squash factor (full when flat/facing the
+# viewer, fading to none when edge-on) so it doesn't pop at stage boundaries.
+OBJECT_SHADOW_STRENGTH = 0.30  # 0 = none
+OBJECT_SHADOW_OFFSET = (7, 11)  # (dx, dy) px on the output canvas
+OBJECT_SHADOW_BLUR = 16         # px
+
+# Foreshortening shear on the flip transitions (envelope turn, card open):
+# a small shear that peaks at mid-flip and returns to 0 at the flat ends, so
+# the motion reads as a rotation through space rather than a flat squash.
+# Shipped OFF: its peak lands where the object is edge-on (a thin strip, so
+# the shear is barely visible), while it adds ~1.5 MB to the file and nudges
+# it toward email size caps -- and the grounded pure-squash on real leather
+# already reads clean and calm. It's a tested, alpha-correct knob: set a
+# small value like 0.06 to turn the 3D turn/open on. 0 = off (pure squash).
+FLIP_SHEAR = 0.0  # peak shear as a fraction of the object's cross-axis length
 
 # Vertical staging, as fractions of CANVAS_SIZE height. The envelope scenes
 # sit higher on the canvas; the card docks with its top edge (its hinge,

@@ -4,7 +4,7 @@ plausible "flap lifted away" background for the flap-open stage.
 """
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from . import config, imaging
 
@@ -30,25 +30,86 @@ def note_quad_px(card_img):
     return [(x0 + fx * bw, y0 + fy * bh) for fx, fy in config.NOTE_QUAD_FRAC]
 
 
+def _match_exposure(note_img, card_img, dst_quad, amount):
+    """Gain-shift the note so its paper tone moves toward the card's own
+    blank-panel tone, per channel -- keeps a note shot under different
+    lighting from glowing brighter/cooler than the card it sits on."""
+    if amount <= 0:
+        return note_img
+    xs = [p[0] for p in dst_quad]
+    ys = [p[1] for p in dst_quad]
+    pad = 0.06 * (max(xs) - min(xs))
+    panel = np.asarray(
+        card_img.crop((min(xs) + pad, min(ys) + pad, max(xs) - pad, max(ys) - pad)),
+        dtype=float,
+    ).reshape(-1, 3)
+    card_tone = np.median(panel, axis=0)
+
+    na = np.asarray(note_img, dtype=float)
+    lum = na.reshape(-1, 3).mean(axis=1)
+    paper = na.reshape(-1, 3)[lum >= np.percentile(lum, 60)]
+    note_tone = paper.mean(axis=0)
+
+    gain = np.where(note_tone > 1, card_tone / note_tone, 1.0)
+    gain = 1 + (gain - 1) * amount
+    out = np.clip(na * gain, 0, 255).astype("uint8")
+    return Image.fromarray(out, "RGB")
+
+
+def _paper_grain_map(card_img, strength):
+    """A per-pixel multiply map (~1.0) carrying the card paper's high-frequency
+    grain, lighting/vignette divided out, so it can be imprinted onto the note
+    without also darkening it."""
+    arr = np.asarray(card_img, dtype=float).mean(axis=2)
+    blur = np.asarray(
+        Image.fromarray(arr.astype("uint8")).filter(ImageFilter.GaussianBlur(6)),
+        dtype=float,
+    )
+    grain = arr / np.clip(blur, 1, None)
+    return 1 + (grain - 1) * strength
+
+
 def composite_note(card_img, note_img, feather_px=2):
     """Returns a copy of card_img (full uncropped photo) with note_img
-    perspective-warped into the configured note quad."""
+    perspective-warped into the configured note quad and blended to read as
+    ink on the card's own paper: exposure-matched to the card's panel tone,
+    grounded with a soft contact shadow, and carrying the card's paper grain.
+    """
     dst_quad = note_quad_px(card_img)
+    note_img = _match_exposure(note_img, card_img, dst_quad, config.NOTE_EXPOSURE_MATCH)
+
     w, h = note_img.size
     src_quad = [(0, 0), (w, 0), (w, h), (0, h)]
     coeffs = _find_perspective_coeffs(dst_quad, src_quad)
 
-    note_rgba = note_img.convert("RGBA")
-    warped = note_rgba.transform(
+    warped = note_img.convert("RGBA").transform(
         card_img.size, Image.PERSPECTIVE, coeffs,
         resample=Image.BICUBIC, fillcolor=(0, 0, 0, 0),
     )
-
+    alpha = warped.getchannel("A")
     if feather_px:
-        alpha = imaging.feather_alpha(warped.getchannel("A"), feather_px)
+        alpha = imaging.feather_alpha(alpha, feather_px)
         warped.putalpha(alpha)
 
+    if config.NOTE_GRAIN_STRENGTH > 0:
+        grain = _paper_grain_map(card_img, config.NOTE_GRAIN_STRENGTH)
+        rgb = np.asarray(warped.convert("RGB"), dtype=float) * grain[..., None]
+        grained = Image.fromarray(np.clip(rgb, 0, 255).astype("uint8"), "RGB").convert("RGBA")
+        grained.putalpha(alpha)
+        warped = grained
+
     result = card_img.convert("RGBA")
+
+    if config.NOTE_SHADOW_STRENGTH > 0:
+        dx, dy = config.NOTE_SHADOW_OFFSET
+        shadow_alpha = alpha.filter(ImageFilter.GaussianBlur(config.NOTE_SHADOW_BLUR))
+        shadow_alpha = shadow_alpha.point(lambda a: int(a * config.NOTE_SHADOW_STRENGTH))
+        shifted = Image.new("L", card_img.size, 0)
+        shifted.paste(shadow_alpha, (dx, dy))
+        shadow = Image.new("RGBA", card_img.size, (0, 0, 0, 0))
+        shadow.putalpha(shifted)
+        result.alpha_composite(shadow)
+
     result.alpha_composite(warped)
     return result.convert("RGB")
 
