@@ -11,8 +11,6 @@
   9. hold on the finished card with the handwritten note
 """
 
-from PIL import Image
-
 from . import compositing, config, imaging
 
 
@@ -20,15 +18,16 @@ def _fitted(img, name, target_width):
     return imaging.fit_width(imaging.crop_to_bbox(img, name), target_width)
 
 
-def build_frames(note_path=None):
+def build_frames(note_path=None, address_path=None):
     envelope_front_src = imaging.load_source("envelope_front")
     envelope_back_src = imaging.load_source("envelope_back")
     card_cover_src = imaging.load_source("card_cover")
     card_open_src = imaging.load_source("card_open")
 
     if note_path:
-        note_img = Image.open(note_path).convert("RGB")
-        card_open_src = compositing.composite_note(card_open_src, note_img)
+        card_open_src = compositing.write_note(card_open_src, note_path)
+    if address_path:
+        envelope_front_src = compositing.write_address(envelope_front_src, address_path)
 
     envelope_open_src = compositing.envelope_with_flap_removed(envelope_back_src, envelope_front_src)
 

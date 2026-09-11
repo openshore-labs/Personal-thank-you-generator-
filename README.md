@@ -1,8 +1,10 @@
 # Thank-you GIF generator
 
 Builds an animated GIF from photos of your actual thank-you card + envelope:
-the envelope turns around, its flap opens, the card slides out, and it opens
-to reveal a handwritten note photo composited into the blank interior.
+the envelope (addressed in your handwriting) turns around, its flap opens, the
+card slides out, and it opens to reveal your handwritten note. The note and the
+address are supplied as photos of real handwriting; the ink is lifted off the
+paper and written onto the card / envelope so it reads as penned there.
 
 ## Setup
 
@@ -13,30 +15,35 @@ pip install -r requirements.txt
 ## Usage
 
 ```
-python generate_gif.py                                    # blank interior, no note
-python generate_gif.py --note assets/notes/my_note.jpg     # with a handwritten note
-python generate_gif.py --note assets/notes/my_note.jpg --out output/for_alex.gif
+python generate_gif.py                                     # blank card + envelope
+python generate_gif.py --note assets/notes/note_body.jpg   # note written into the card
+python generate_gif.py --note assets/notes/note_body.jpg \
+    --address assets/notes/envelope_address.jpg \
+    --out output/for_natalie.gif                            # + address on the envelope
 ```
 
-Drop handwritten-note photos into `assets/notes/` (git-ignored except for
-`.gitkeep` -- these are one-off per recipient, not checked in). Shoot the
-note straight-on, similar lighting to the source card photos, and it'll get
-perspective-warped into the card's bottom-half panel.
+Drop handwriting photos into `assets/notes/` (git-ignored except for
+`.gitkeep` -- these are one-off per recipient, and personal, so they're not
+checked in). Shoot them straight-on on white-ish paper in even light; the ink
+extraction (see below) handles the paper, shadows, and any embossed
+show-through from previous pages. The note is fit to scale onto the card
+interior (centered); the address is centered on the envelope front.
 
 ## How it's put together
 
 - `assets/source/` -- the four reference photos (envelope front, envelope
   back/flap, card cover, card open blank) this whole pipeline is built from.
 - `thankyou_gif/config.py` -- every tunable number: measured bounding boxes,
-  the note-placement quad, the flap triangle, canvas size, and per-stage
-  timing. Start here when something needs adjusting.
+  the ink-extraction params, where the note and address get written, the flap
+  triangle, canvas size, and per-stage timing. Start here to adjust anything.
 - `thankyou_gif/imaging.py` -- generic helpers: cropping to a measured bbox,
   and the pivoted "flip" transition used both for the envelope turning
   around (squash on the x-axis) and the card opening (squash on the
   y-axis, hinged at the card's top edge since it's a top-fold card).
-- `thankyou_gif/compositing.py` -- the two pieces of real photo compositing:
-  perspective-warping a note photo into the card, and patching the flap's
-  triangle out of the envelope-back photo.
+- `thankyou_gif/compositing.py` -- lifts the ink off a handwriting photo
+  (`extract_ink`) and writes it to scale onto the card (`write_note`) or
+  envelope (`write_address`); also patches the flap's triangle out of the
+  envelope-back photo for the flap-open stage.
 - `thankyou_gif/stages.py` -- assembles the full ordered sequence (see
   below) into one frame list.
 - `thankyou_gif/pipeline.py` -- quantizes and writes the GIF.
@@ -62,12 +69,11 @@ python calibrate.py
 ```
 
 Writes PNGs to `output/calibration/` with the measured bboxes, the flap
-triangle, and the note quad drawn on top of the actual source photos --
-check these any time you edit `config.py`, before spending time on a full
-render. `note_quad.png` is the one worth double-checking most: it's an
-axis-aligned rectangle in the bottom half of the card by default, but
-`NOTE_QUAD_FRAC` in config.py holds 4 independent corners, so you can true
-up perspective there if a note ever looks skewed once composited.
+triangle, and the note / address write-rectangles drawn on top of the actual
+source photos -- check these any time you edit `config.py`, before spending
+time on a full render. `card_write_rect.png` and `envelope_address_rect.png`
+show exactly where the handwriting will be fit and centered
+(`CARD_WRITE_RECT_FRAC` / `ENVELOPE_ADDRESS_RECT_FRAC` in config.py).
 
 ## Known placeholder: the flap-open fill
 
@@ -120,12 +126,11 @@ in `imaging.flip_transition`:
   the leather rather than looking stamped on. During the flip transitions the
   shadow fades with the object's squash factor, so it matches the neighbouring
   holds exactly and never pops.
-- **The composited note reads as ink on the card's own paper**, not a pasted
-  rectangle (`compositing.composite_note`, `NOTE_*` in config.py): its paper
-  tone is gain-shifted toward the card's blank-panel tone (`NOTE_EXPOSURE_MATCH`),
-  it carries the card's own paper grain (`NOTE_GRAIN_STRENGTH`), and it casts
-  a soft contact shadow (`NOTE_SHADOW_STRENGTH`). See the note about that
-  shadow knob under "when real notes arrive" below.
+- **The handwriting reads as real ink on the card / envelope paper**, not a
+  pasted photo of a sheet. `compositing.extract_ink` lifts just the pen strokes
+  off the handwriting photo (dividing out the paper, lighting, and any embossed
+  show-through), so when it's written on, the card's and envelope's own paper
+  grain shows through the strokes. `INK_*` in config.py tune the extraction.
 - **One shared GIF palette** for the whole animation (`pipeline._shared_palette`),
   derived from frames sampled across the sequence, rather than a separate
   palette per frame -- the latter makes the photographed grain shimmer
@@ -138,18 +143,12 @@ in `imaging.flip_transition`:
   toward email size caps. Set a small value like `0.06` to turn it on -- it's
   tested and alpha-correct.
 
-## When real handwritten-note photos arrive
+## Tuning the handwriting
 
-The note-realism pipeline above (exposure-match, grain, contact shadow) is in
-and validated against a placeholder, but two things are worth doing once real
-notes are in hand:
-
-1. **Set `NOTE_SHADOW_STRENGTH` to match the note format.** If your note is a
-   separate slip of paper tucked into the card, keep or raise it (it sells the
-   depth). If the writing is meant to read as ink directly on the card's own
-   bottom-half paper, drop it toward 0 -- a full-rectangle shadow would make
-   the note look like a separate sheet. The exposure-match and grain are wins
-   either way.
-2. **Check `note_quad.png` from `calibrate.py`** and true up `NOTE_QUAD_FRAC`
-   if a real note looks skewed once composited (the quad has 4 independent
-   corners for exactly this).
+If the ink extraction leaves faint ghosts or drops light strokes on a new
+handwriting photo, adjust `INK_*` in config.py: raise `INK_FLOOR` / `INK_CUTOFF`
+to suppress more of the paper and embossing, lower them (or raise `INK_GAIN`)
+to keep more of a light-pen stroke. To reposition or resize the writing, edit
+`CARD_WRITE_RECT_FRAC` / `ENVELOPE_ADDRESS_RECT_FRAC` (and the `*_ALIGN`
+settings) and check `calibrate.py`'s `card_write_rect.png` /
+`envelope_address_rect.png` before a full render.

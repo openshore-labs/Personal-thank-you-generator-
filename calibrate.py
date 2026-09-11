@@ -54,11 +54,20 @@ def main():
 
     card_open = imaging.load_source("card_open")
 
-    def draw_note_quad(draw, img):
-        quad = compositing.note_quad_px(img)
-        draw.polygon(quad, outline=(0, 220, 0), width=6)
+    def draw_write_rect(draw, img, name="card_open", frac=config.CARD_WRITE_RECT_FRAC):
+        draw.rectangle(compositing._rect_in_bbox(img, name, frac), outline=(0, 220, 0), width=6)
 
-    _preview(card_open, draw_note_quad, "note_quad")
+    _preview(card_open, draw_write_rect, "card_write_rect")
+
+    envelope_front2 = imaging.load_source("envelope_front")
+    _preview(
+        envelope_front2,
+        lambda d, i: d.rectangle(
+            compositing._rect_in_bbox(i, "envelope_front", config.ENVELOPE_ADDRESS_RECT_FRAC),
+            outline=(0, 220, 0), width=6,
+        ),
+        "envelope_address_rect",
+    )
 
 
 if __name__ == "__main__":

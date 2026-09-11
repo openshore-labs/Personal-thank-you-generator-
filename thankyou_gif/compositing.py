@@ -1,6 +1,6 @@
-"""Photo compositing: warping a handwritten-note image into the card's note
-quad, and patching the envelope's flap out of the back photo so we have a
-plausible "flap lifted away" background for the flap-open stage.
+"""Photo compositing: lifting the ink off a photo of handwriting so it can be
+written onto the card interior / envelope front as if penned there, and
+patching the envelope's flap out of the back photo for the flap-open stage.
 """
 
 import numpy as np
@@ -9,109 +9,76 @@ from PIL import Image, ImageDraw, ImageFilter
 from . import config, imaging
 
 
-def _find_perspective_coeffs(dst_quad, src_quad):
-    """Coeffs for Image.transform(size, PERSPECTIVE, coeffs) such that the
-    corners of `src_quad` (in the image being sampled) land at `dst_quad`
-    (in the output image's coordinate space)."""
-    matrix = []
-    for (X, Y), (x, y) in zip(dst_quad, src_quad):
-        matrix.append([X, Y, 1, 0, 0, 0, -X * x, -Y * x])
-        matrix.append([0, 0, 0, X, Y, 1, -X * y, -Y * y])
-    A = np.array(matrix, dtype=float)
-    B = np.array(src_quad, dtype=float).reshape(8)
-    return np.linalg.solve(A, B).tolist()
+def extract_ink(source):
+    """Lift the handwriting off a photo of it on paper: returns an RGBA image
+    where the pen strokes keep their natural colour and everything else (paper,
+    lighting gradients, and the embossed show-through from writing on the pages
+    above) is transparent, plus the tight bounding box of the ink.
 
-
-def note_quad_px(card_img):
-    """Absolute pixel corners (TL, TR, BR, BL) of the note quad within the
-    full, uncropped card_open photo."""
-    x0, y0, x1, y1 = imaging.bbox_px("card_open", card_img.size)
-    bw, bh = x1 - x0, y1 - y0
-    return [(x0 + fx * bw, y0 + fy * bh) for fx, fy in config.NOTE_QUAD_FRAC]
-
-
-def _match_exposure(note_img, card_img, dst_quad, amount):
-    """Gain-shift the note so its paper tone moves toward the card's own
-    blank-panel tone, per channel -- keeps a note shot under different
-    lighting from glowing brighter/cooler than the card it sits on."""
-    if amount <= 0:
-        return note_img
-    xs = [p[0] for p in dst_quad]
-    ys = [p[1] for p in dst_quad]
-    pad = 0.06 * (max(xs) - min(xs))
-    panel = np.asarray(
-        card_img.crop((min(xs) + pad, min(ys) + pad, max(xs) - pad, max(ys) - pad)),
-        dtype=float,
-    ).reshape(-1, 3)
-    card_tone = np.median(panel, axis=0)
-
-    na = np.asarray(note_img, dtype=float)
-    lum = na.reshape(-1, 3).mean(axis=1)
-    paper = na.reshape(-1, 3)[lum >= np.percentile(lum, 60)]
-    note_tone = paper.mean(axis=0)
-
-    gain = np.where(note_tone > 1, card_tone / note_tone, 1.0)
-    gain = 1 + (gain - 1) * amount
-    out = np.clip(na * gain, 0, 255).astype("uint8")
-    return Image.fromarray(out, "RGB")
-
-
-def _paper_grain_map(card_img, strength):
-    """A per-pixel multiply map (~1.0) carrying the card paper's high-frequency
-    grain, lighting/vignette divided out, so it can be imprinted onto the note
-    without also darkening it."""
-    arr = np.asarray(card_img, dtype=float).mean(axis=2)
-    blur = np.asarray(
-        Image.fromarray(arr.astype("uint8")).filter(ImageFilter.GaussianBlur(6)),
-        dtype=float,
-    )
-    grain = arr / np.clip(blur, 1, None)
-    return 1 + (grain - 1) * strength
-
-
-def composite_note(card_img, note_img, feather_px=2):
-    """Returns a copy of card_img (full uncropped photo) with note_img
-    perspective-warped into the configured note quad and blended to read as
-    ink on the card's own paper: exposure-matched to the card's panel tone,
-    grounded with a soft contact shadow, and carrying the card's paper grain.
+    Works by dividing the photo by a local estimate of the paper tone (a
+    max-filtered, heavily blurred copy), so only marks meaningfully darker
+    than their surrounding paper survive -- faint embossing divides out to
+    ~1.0 and drops away.
     """
-    dst_quad = note_quad_px(card_img)
-    note_img = _match_exposure(note_img, card_img, dst_quad, config.NOTE_EXPOSURE_MATCH)
+    img = (source if isinstance(source, Image.Image) else Image.open(source)).convert("RGB")
+    gray = img.convert("L")
+    paper = gray.filter(
+        ImageFilter.MaxFilter(2 * config.INK_MAX_RADIUS + 1)
+    ).filter(ImageFilter.GaussianBlur(config.INK_BG_BLUR))
 
-    w, h = note_img.size
-    src_quad = [(0, 0), (w, 0), (w, h), (0, h)]
-    coeffs = _find_perspective_coeffs(dst_quad, src_quad)
+    darkness = np.clip(1 - np.asarray(gray, float) / np.clip(np.asarray(paper, float), 1, None), 0, 1)
+    alpha = np.clip((darkness - config.INK_FLOOR) / (1 - config.INK_FLOOR) * config.INK_GAIN, 0, 1)
+    a = (alpha * 255).astype("uint8")
+    a[a < config.INK_CUTOFF] = 0  # kill faint embossing/noise so it leaves no ghost
 
-    warped = note_img.convert("RGBA").transform(
-        card_img.size, Image.PERSPECTIVE, coeffs,
-        resample=Image.BICUBIC, fillcolor=(0, 0, 0, 0),
-    )
-    alpha = warped.getchannel("A")
-    if feather_px:
-        alpha = imaging.feather_alpha(alpha, feather_px)
-        warped.putalpha(alpha)
+    rgba = Image.fromarray(np.dstack([np.asarray(img), a]), "RGBA")
+    ys, xs = np.where(a > config.INK_BBOX_THRESH)
+    if not len(xs):
+        return rgba, (0, 0, img.width, img.height)
+    return rgba, (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
-    if config.NOTE_GRAIN_STRENGTH > 0:
-        grain = _paper_grain_map(card_img, config.NOTE_GRAIN_STRENGTH)
-        rgb = np.asarray(warped.convert("RGB"), dtype=float) * grain[..., None]
-        grained = Image.fromarray(np.clip(rgb, 0, 255).astype("uint8"), "RGB").convert("RGBA")
-        grained.putalpha(alpha)
-        warped = grained
 
-    result = card_img.convert("RGBA")
+def _rect_in_bbox(base_img, bbox_name, rect_frac):
+    """Absolute px rect (x0,y0,x1,y1) from a fraction-of-object-bbox rect."""
+    x0, y0, x1, y1 = imaging.bbox_px(bbox_name, base_img.size)
+    bw, bh = x1 - x0, y1 - y0
+    fx0, fy0, fx1, fy1 = rect_frac
+    return (x0 + fx0 * bw, y0 + fy0 * bh, x0 + fx1 * bw, y0 + fy1 * bh)
 
-    if config.NOTE_SHADOW_STRENGTH > 0:
-        dx, dy = config.NOTE_SHADOW_OFFSET
-        shadow_alpha = alpha.filter(ImageFilter.GaussianBlur(config.NOTE_SHADOW_BLUR))
-        shadow_alpha = shadow_alpha.point(lambda a: int(a * config.NOTE_SHADOW_STRENGTH))
-        shifted = Image.new("L", card_img.size, 0)
-        shifted.paste(shadow_alpha, (dx, dy))
-        shadow = Image.new("RGBA", card_img.size, (0, 0, 0, 0))
-        shadow.putalpha(shifted)
-        result.alpha_composite(shadow)
 
-    result.alpha_composite(warped)
-    return result.convert("RGB")
+def place_handwriting(base_img, photo_source, dst_rect, align):
+    """Extract the ink from photo_source and write it onto base_img, scaled to
+    fit within dst_rect (preserving the handwriting's aspect ratio) and aligned
+    within it. align is (horizontal, vertical) from {left/center/right} x
+    {top/center/bottom}."""
+    ink, bbox = extract_ink(photo_source)
+    crop = ink.crop(bbox)
+
+    dw, dh = dst_rect[2] - dst_rect[0], dst_rect[3] - dst_rect[1]
+    scale = min(dw / crop.width, dh / crop.height)
+    nw, nh = max(1, round(crop.width * scale)), max(1, round(crop.height * scale))
+    resized = crop.resize((nw, nh), Image.LANCZOS)
+
+    ax = {"left": 0.0, "center": 0.5, "right": 1.0}[align[0]]
+    ay = {"top": 0.0, "center": 0.5, "bottom": 1.0}[align[1]]
+    x = round(dst_rect[0] + ax * (dw - nw))
+    y = round(dst_rect[1] + ay * (dh - nh))
+
+    out = base_img.convert("RGBA")
+    out.alpha_composite(resized, (x, y))
+    return out.convert("RGB")
+
+
+def write_note(card_img, note_source):
+    """Write the extracted note onto the open card's interior."""
+    rect = _rect_in_bbox(card_img, "card_open", config.CARD_WRITE_RECT_FRAC)
+    return place_handwriting(card_img, note_source, rect, config.CARD_WRITE_ALIGN)
+
+
+def write_address(envelope_front_img, address_source):
+    """Write the extracted address onto the envelope front."""
+    rect = _rect_in_bbox(envelope_front_img, "envelope_front", config.ENVELOPE_ADDRESS_RECT_FRAC)
+    return place_handwriting(envelope_front_img, address_source, rect, config.ENVELOPE_ADDRESS_ALIGN)
 
 
 def flap_triangle_px(envelope_img):

@@ -53,40 +53,30 @@ FLAP_TRIANGLE_FRAC = (
     (0.510, 0.790),  # apex
 )
 
-# Where the handwritten note gets composited, as a quad (TL, TR, BR, BL) in
-# fractions of card_open's own bbox. Starts as an axis-aligned rectangle in
-# the bottom half (below the fold); edit individual corners here to true up
-# perspective once real note photos are in and something looks skewed.
-NOTE_QUAD_FRAC = (
-    (0.10, 0.560),  # top-left
-    (0.90, 0.560),  # top-right
-    (0.90, 0.960),  # bottom-right
-    (0.10, 0.960),  # bottom-left
-)
+# --- Handwriting (note + envelope address) ------------------------------------
+# The note and the envelope address are supplied as photos of real handwriting
+# on paper. compositing.extract_ink lifts just the pen strokes off the paper so
+# they can be written onto the card / envelope as if penned there (the card's
+# and envelope's own paper grain then shows through the strokes). These tune
+# that extraction; defaults were validated on the founder's own note photos.
+INK_MAX_RADIUS = 7     # px; max-filter radius used to estimate the paper tone
+INK_BG_BLUR = 60       # px; blur of that paper-tone estimate
+INK_FLOOR = 0.30       # darkness below this (relative to local paper) is ignored
+INK_GAIN = 1.7         # multiplies stroke opacity after the floor
+INK_CUTOFF = 28        # final alpha below this is zeroed (kills faint ghosts)
+INK_BBOX_THRESH = 95   # alpha above this counts toward the ink's tight bbox
 
-# --- Note realism -------------------------------------------------------------
-# Make a composited note read as ink on the card's own paper rather than a
-# pasted rectangle. All three are applied in compositing.composite_note.
+# Where the note is written on the open card, as a fraction of the card's own
+# bbox. The letter is a full page, so it fills most of the interior (the fold
+# crease runs through it, exactly as it would on a real folded card) rather
+# than being confined to the bottom half. Fit preserves the handwriting's
+# aspect ratio; alignment is (horizontal, vertical).
+CARD_WRITE_RECT_FRAC = (0.10, 0.07, 0.90, 0.94)
+CARD_WRITE_ALIGN = ("center", "center")
 
-# Pull the note's paper white toward the card's blank-panel tone (warm
-# off-white), so a note shot under different lighting doesn't glow. 0 = leave
-# the note's own exposure untouched, 1 = fully match the card panel.
-NOTE_EXPOSURE_MATCH = 0.85
-
-# Soft contact shadow cast by the note onto the card underneath it. This is
-# the one knob to set once real note photos are in hand: if the notes are a
-# separate slip of paper tucked into the card, keep/raise it (it sells the
-# depth); if the writing is meant to read as ink directly on the card's own
-# bottom-half paper, drop it toward 0 (a full-rectangle shadow would make it
-# look like a separate sheet). The exposure-match and grain below are wins
-# either way.
-NOTE_SHADOW_STRENGTH = 0.22   # 0 = none
-NOTE_SHADOW_OFFSET = (4, 6)   # (dx, dy) px in source-photo space
-NOTE_SHADOW_BLUR = 11         # px
-
-# Imprint the card's own paper grain onto the note so a crisp note photo
-# shares the card's texture. 0 = none, 1 = full-strength card grain.
-NOTE_GRAIN_STRENGTH = 0.5
+# Where the address is written on the envelope front: centered, middle-aligned.
+ENVELOPE_ADDRESS_RECT_FRAC = (0.12, 0.33, 0.88, 0.67)
+ENVELOPE_ADDRESS_ALIGN = ("center", "center")
 
 # --- Canvas & look ------------------------------------------------------------
 
