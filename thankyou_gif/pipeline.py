@@ -16,12 +16,13 @@ def render(note_path=None, output_path=None):
 
     output_path = output_path or os.path.join(config.OUTPUT_DIR, "thank_you.gif")
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    quantized[0].save(
-        output_path,
+    save_kwargs = dict(
         save_all=True,
         append_images=quantized[1:],
         duration=durations,
-        loop=config.LOOP,
         optimize=False,
     )
+    if config.LOOP is not None:
+        save_kwargs["loop"] = config.LOOP  # omitted entirely = plays once, freezes on last frame
+    quantized[0].save(output_path, **save_kwargs)
     return output_path

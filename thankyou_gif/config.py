@@ -98,4 +98,4 @@ TIMING = {
     "hold_final": (30, 80),
 }
 
-LOOP = 0  # 0 = loop forever
+LOOP = None  # None = play once, freeze on the final still (no GIF loop extension written)
